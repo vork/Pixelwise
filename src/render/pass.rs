@@ -193,13 +193,14 @@ fn compute_display_uniform(
     let zoom = cam.zoom.max(0.001);
 
     // Map clip-space [-1,1]^2 to image-space [0,1]^2.
-    //   image_pixels_visible_x = sw / zoom
-    //   uv_scale_x = image_pixels_visible / iw
+    // The vertex shader computes:
+    //   uv = xy * uv_xform.xy * 0.5 + 0.5 + uv_xform.zw
+    // We want uv == cam.center/(iw,ih) when xy == (0,0) (center of screen),
+    // and we want uv to span `visible_image_uv` when xy spans [-1,1].
     let uv_scale_x = (sw as f32) / (zoom * iw);
     let uv_scale_y = (sh as f32) / (zoom * ih);
-    // Center offset in UV.
-    let off_x = cam.center[0] / iw - uv_scale_x * 0.5;
-    let off_y = cam.center[1] / ih - uv_scale_y * 0.5;
+    let off_x = cam.center[0] / iw - 0.5;
+    let off_y = cam.center[1] / ih - 0.5;
 
     DisplayUniform {
         uv_xform: [uv_scale_x, uv_scale_y, off_x, off_y],

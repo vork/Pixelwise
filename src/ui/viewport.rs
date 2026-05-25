@@ -81,11 +81,13 @@ pub fn Viewport() -> impl IntoView {
         });
     }
 
-    // rAF render loop. Pumps frames continuously; the cost when idle is just
-    // a uniform write + 3-vertex draw, so we keep it simple.
+    // rAF render loop. Mounted exactly once (the Effect closure doesn't track
+    // any signals, so it doesn't re-run). Inside the rAF callback we don't
+    // touch context-derived APIs — we already captured the store above.
     {
         let gfx = gfx.clone();
-        Effect::new(move |_| {
+        let store = store;
+        Effect::new(move |_: Option<()>| {
             let gfx = gfx.clone();
             let win = web_sys::window().expect("window");
             let cb_holder: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
@@ -97,9 +99,9 @@ pub fn Viewport() -> impl IntoView {
                         g.ctx.resize(w, h);
                         g.needs_redraw = true;
                     }
-                    g.frame.sync_images(&g.ctx, &use_store());
+                    g.frame.sync_images(&g.ctx, &store);
                     if g.needs_redraw {
-                        render_frame(&mut g.ctx, &mut g.frame, &use_store());
+                        render_frame(&mut g.ctx, &mut g.frame, &store);
                         g.needs_redraw = false;
                     }
                 }
