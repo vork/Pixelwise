@@ -1,0 +1,17 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/"
+
+[watch]
+ignore = ["dist", "node_modules", "target"]
+
+[serve]
+address = "127.0.0.1"
+port = 8080
+open = false
+
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "npx --yes tailwindcss@3 -i style/tailwind.css -o style/tailwind.out.css --minify"]

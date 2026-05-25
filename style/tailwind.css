@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #app-root {
+    height: 100%;
+    background: #0b0b0f;
+    color: #e9e6ff;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    overflow: hidden;
+  }
+
+  /* Numbers / probe values use monospace for alignment. */
+  .nums { font-variant-numeric: tabular-nums; font-family: JetBrains Mono, Menlo, Consolas, monospace; }
+}
+
+@layer components {
+  .brand-text {
+    @apply bg-brand-gradient-flat bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg,
+      color(display-p3 0.86532 0.52552 1.0) 0%,
+      color(display-p3 0.96783 0.647 0.25975) 100%);
+  }
+
+  .panel {
+    @apply bg-panel border border-border rounded-md shadow-soft;
+  }
+
+  .panel-inset {
+    @apply bg-panel2 border border-border rounded-md;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs
+           rounded border border-border bg-panel2 text-text
+           hover:border-accentA/60 hover:bg-panel
+           active:translate-y-px transition-colors select-none cursor-pointer;
+  }
+
+  .btn-pri {
+    @apply btn border-transparent text-bg font-medium;
+    background-image: linear-gradient(135deg, #dd86ff 0%, #f7a543 100%);
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]
+           uppercase tracking-wide bg-panel2 text-muted border border-border;
+  }
+
+  .chip-ok { @apply chip text-ok border-ok/30; }
+  .chip-warn { @apply chip text-warn border-warn/30; }
+  .chip-err { @apply chip text-err border-err/30; }
+
+  .label {
+    @apply text-[11px] uppercase tracking-wider text-muted;
+  }
+
+  .seg {
+    @apply inline-flex bg-panel2 border border-border rounded p-0.5 text-xs;
+  }
+  .seg > button {
+    @apply px-2 py-0.5 rounded text-muted hover:text-text cursor-pointer;
+  }
+  .seg > button.active {
+    @apply bg-bg text-text;
+    background-image: linear-gradient(135deg, rgba(221,134,255,0.18), rgba(247,165,67,0.18));
+  }
+
+  .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: #2a2a37; border-radius: 4px; }
+  .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+
+  input[type="range"].brand {
+    -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, #2a2a37, #2a2a37);
+    outline: none;
+  }
+  input[type="range"].brand::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: linear-gradient(135deg, #dd86ff, #f7a543);
+    cursor: pointer; box-shadow: 0 0 0 1px #0b0b0f, 0 0 0 3px rgba(221,134,255,0.25);
+  }
+  input[type="range"].brand::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%; border: 0;
+    background: linear-gradient(135deg, #dd86ff, #f7a543);
+    cursor: pointer; box-shadow: 0 0 0 1px #0b0b0f, 0 0 0 3px rgba(221,134,255,0.25);
+  }
+}

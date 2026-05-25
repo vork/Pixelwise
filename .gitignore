@@ -1,0 +1,10 @@
+/target
+/dist
+/node_modules
+/style/tailwind.out.css
+package-lock.json
+Cargo.lock
+*.bak
+.DS_Store
+.idea
+.vscode
