@@ -1,0 +1,55 @@
+[package]
+name = "pixelwise"
+version = "0.1.0"
+edition = "2021"
+description = "A static web app for inspecting and comparing HDR images, render outputs, and ML-generated images"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { version = "0.7", features = ["csr"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+  "Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement",
+  "HtmlInputElement", "CanvasRenderingContext2d", "Event", "EventTarget",
+  "MouseEvent", "WheelEvent", "PointerEvent", "KeyboardEvent",
+  "DragEvent", "DataTransfer", "DataTransferItemList", "DataTransferItem",
+  "File", "FileList", "FileReader", "Blob",
+  "MediaQueryList", "MediaQueryListEvent",
+  "Url", "Worker", "MessageEvent",
+  "Performance", "console",
+  "DomRect", "DomRectReadOnly",
+  "Response",
+  "UrlSearchParams", "Location",
+  "TextMetrics",
+]}
+wgpu = { version = "22", default-features = false, features = ["webgpu", "wgsl"] }
+bytemuck = { version = "1", features = ["derive"] }
+glam = { version = "0.29", features = ["bytemuck"] }
+half = { version = "2", features = ["bytemuck"] }
+exr = "1.73"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "hdr"] }
+tiff = "0.10"
+log = "0.4"
+console_log = "1"
+console_error_panic_hook = "0.1"
+futures = "0.3"
+gloo-events = "0.2"
+gloo-timers = { version = "0.3", features = ["futures"] }
+gloo-file = { version = "0.3", features = ["futures"] }
+thiserror = "2"
+bitflags = "2"
+once_cell = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
