@@ -5,7 +5,7 @@ use leptos::prelude::*;
 use crate::state::store::use_store;
 use crate::state::view::ViewMode;
 use crate::ui::compare::CompareControls;
-use crate::ui::controls::{ChannelClipControls, InspectControls};
+use crate::ui::controls::{ChannelClipControls, InspectControls, LutPanel};
 use crate::ui::drop_zone::DropZone;
 use crate::ui::histogram::HistogramPanel;
 use crate::ui::metrics_panel::MetricsPanel;
@@ -62,6 +62,7 @@ pub fn AppShell() -> impl IntoView {
                                     view! {
                                         <>
                                             <InspectControls />
+                                            <LutPanel />
                                             <ChannelClipControls />
                                         </>
                                     }.into_any()

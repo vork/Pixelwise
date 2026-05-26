@@ -44,6 +44,13 @@ pub fn PixelProbe() -> impl IntoView {
             }
             Tonemap::Gamma => tonemap::gamma(exposed, store.tonemap_gamma.get()),
         };
+        // Post-tonemap LUT lookup (no-op when no LUT loaded). Mirrors the
+        // shader pipeline so the "display" column matches what's on screen.
+        let display = if let Some(lut) = store.lut.get() {
+            tonemap::lut_trilinear(display, &lut)
+        } else {
+            display
+        };
         let mut flags = Vec::new();
         for (n, v) in ["R", "G", "B", "A"].iter().zip(raw.iter()) {
             if v.is_nan() {

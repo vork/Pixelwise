@@ -34,6 +34,8 @@ struct DisplayParams {
 @group(0) @binding(3) var s_nearest: sampler;
 @group(0) @binding(4) var t_ramp: texture_1d<f32>;
 @group(0) @binding(5) var s_ramp: sampler;
+@group(1) @binding(0) var t_lut: texture_3d<f32>;
+@group(1) @binding(1) var s_lut: sampler;
 
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -68,7 +70,27 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let c_linear = textureSample(t_image, s_linear, uv);
     let c = select(c_nearest, c_linear, d > 0.16);
 
-    // Out-of-image: solid panel color.
+    // Build the full pipeline up to the LUT lookup in uniform control flow
+    // — textureSample requires it. Then handle the out-of-image early-return.
+    let nan = any(c.rgb != c.rgb);
+    let inf = is_inf(c.r) || is_inf(c.g) || is_inf(c.b);
+    var lin = c.rgb;
+    if (!nan && !inf) {
+        lin = lin * exp2(params.exposure);
+    }
+    var pre_lut = apply_channel(vec4<f32>(lin, c.a), params.channel, t_ramp, s_ramp);
+    if (params.output_is_hdr == 0u) {
+        pre_lut = tonemap_to_display(pre_lut, params.tonemap, params.piecewise, params.tm_extras);
+    } else {
+        // HDR canvas: soft knee at 4× SDR, no LUT lookup (LUTs operate in [0,1]).
+        let knee = 4.0;
+        pre_lut = pre_lut / (1.0 + max(pre_lut - vec3<f32>(knee), vec3<f32>(0.0)) / knee);
+    }
+    // LUT stage. Identity LUT is bound until the user loads one, so this is
+    // a no-op then. Skipped in HDR mode (we keep the scene-linear value).
+    let lut_in = clamp(pre_lut, vec3<f32>(0.0), vec3<f32>(1.0));
+    let lut_out = textureSample(t_lut, s_lut, lut_in).rgb;
+
     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
         let cell = floor(in.pos.xy / 24.0);
         let s = (cell.x + cell.y) - 2.0 * floor((cell.x + cell.y) * 0.5);
@@ -76,26 +98,10 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         return vec4<f32>(bg, 1.0);
     }
 
-    // Exposure (skip on NaN/Inf to avoid propagation).
-    let nan = any(c.rgb != c.rgb);
-    let inf = is_inf(c.r) || is_inf(c.g) || is_inf(c.b);
-    var lin = c.rgb;
-    if (!nan && !inf) {
-        lin = lin * exp2(params.exposure);
-    }
-
-    var rgb = apply_channel(vec4<f32>(lin, c.a), params.channel, t_ramp, s_ramp);
-
-    // Tonemap → SDR encode (only in SDR path; HDR canvas wants scene-linear).
+    var rgb = pre_lut;
     if (params.output_is_hdr == 0u) {
-        rgb = tonemap_to_display(rgb, params.tonemap, params.piecewise, params.tm_extras);
-    } else {
-        // In HDR mode, mild compression of extreme highlights so we don't
-        // blow out the panel. Reinhard-soft at 4×SDR.
-        let knee = 4.0;
-        rgb = rgb / (1.0 + max(rgb - vec3<f32>(knee), vec3<f32>(0.0)) / knee);
+        rgb = lut_out;
     }
-
     rgb = apply_clipping(rgb, lin, in.uv_px, params.clip_flags);
     rgb = apply_pixel_grid(rgb, in.uv, params.width, params.height, d);
     return vec4<f32>(rgb, 1.0);

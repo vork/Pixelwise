@@ -20,7 +20,11 @@ pub struct DisplayPipeline {
 }
 
 impl DisplayPipeline {
-    pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        output_format: wgpu::TextureFormat,
+        lut_bgl: &wgpu::BindGroupLayout,
+    ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("display.wgsl"),
             source: wgpu::ShaderSource::Wgsl(build(DISPLAY_WGSL).into()),
@@ -82,7 +86,7 @@ impl DisplayPipeline {
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("display pipeline layout"),
-            bind_group_layouts: &[&bgl],
+            bind_group_layouts: &[&bgl, lut_bgl],
             push_constant_ranges: &[],
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -139,7 +143,11 @@ pub struct ComparePipeline {
 }
 
 impl ComparePipeline {
-    pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        output_format: wgpu::TextureFormat,
+        lut_bgl: &wgpu::BindGroupLayout,
+    ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("split.wgsl"),
             source: wgpu::ShaderSource::Wgsl(build(SPLIT_WGSL).into()),
@@ -221,7 +229,7 @@ impl ComparePipeline {
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("compare pipeline layout"),
-            bind_group_layouts: &[&bgl],
+            bind_group_layouts: &[&bgl, lut_bgl],
             push_constant_ranges: &[],
         });
 
@@ -271,5 +279,31 @@ pub fn mipmap_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("mipmap.wgsl"),
         source: wgpu::ShaderSource::Wgsl(MIPMAP_WGSL.into()),
+    })
+}
+
+/// Bind-group-layout shared by both display and split pipelines for the LUT
+/// 3D texture. Lives in group 1 so the existing group-0 layouts don't change.
+pub fn lut_bgl(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("lut bgl"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D3,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
     })
 }

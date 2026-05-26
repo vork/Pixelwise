@@ -62,6 +62,45 @@ pub fn InspectControls() -> impl IntoView {
     }
 }
 
+/// Standalone LUT stage panel — chains a 3D LUT after the tonemap pipeline.
+/// Identity until the user drops a `.cube` / `.3dl` file, then sample the
+/// loaded LUT for every pixel post-tonemap.
+#[component]
+pub fn LutPanel() -> impl IntoView {
+    let store = use_store();
+    view! {
+        <section class="panel-inset p-2 space-y-2">
+            <header class="flex items-center justify-between">
+                <span class="label">"LUT"</span>
+                <span class="text-[10px] text-muted nums">"post-tonemap"</span>
+            </header>
+            {move || match store.lut.get() {
+                Some(l) => view! {
+                    <div class="text-[11px]">
+                        <div class="text-text truncate" title=l.name.clone()>{l.name.clone()}</div>
+                        <div class="text-[10px] text-muted nums">
+                            {format!("{0}³ · {1}", l.size, l.source_label)}
+                        </div>
+                    </div>
+                    <button
+                        class="btn w-full text-[10px]"
+                        on:click=move |_| store.lut.set(None)>
+                        "Unload LUT"
+                    </button>
+                }.into_any(),
+                None => view! {
+                    <div class="text-[11px] text-muted">
+                        "No LUT loaded. Drop a "
+                        <span class="nums text-text">".cube"</span>" or "
+                        <span class="nums text-text">".3dl"</span>
+                        " onto the page to chain it after the tonemap."
+                    </div>
+                }.into_any(),
+            }}
+        </section>
+    }
+}
+
 #[component]
 fn TonemapParams() -> impl IntoView {
     let store = use_store();

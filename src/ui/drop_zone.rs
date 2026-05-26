@@ -10,7 +10,10 @@ use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
 use web_sys::{DragEvent, Event, HtmlInputElement};
 
+use std::sync::Arc;
+
 use crate::io::decode::decode;
+use crate::io::lut::{looks_like_lut, parse_lut};
 use crate::state::store::use_store;
 
 fn load_files_into_store(store: crate::state::store::Store, files: web_sys::FileList, set_busy: WriteSignal<u32>) {
@@ -29,6 +32,19 @@ fn load_files_into_store(store: crate::state::store::Store, files: web_sys::File
                     return;
                 }
             };
+            // LUT files (.cube / .3dl) are routed to the LUT loader
+            // instead of the image decoder.
+            if let Some(kind) = looks_like_lut(&bytes, &name) {
+                match parse_lut(&bytes, &name, kind) {
+                    Ok(lut) => {
+                        log::info!("loaded LUT {} ({}³ {})", lut.name, lut.size, lut.source_label);
+                        store.lut.set(Some(Arc::new(lut)));
+                    }
+                    Err(e) => log::error!("parse {name} as LUT ({kind:?}): {e}"),
+                }
+                set_busy.update(|n| *n = n.saturating_sub(1));
+                return;
+            }
             match decode(bytes, &name) {
                 Ok(img) => {
                     log::info!("loaded {} ({}×{} {})", name, img.width, img.height, img.format_label);
@@ -127,7 +143,7 @@ pub fn DropZone() -> impl IntoView {
                             <span class="brand-text font-medium">"Drop images"</span>
                             " or "
                             <span class="underline">"browse"</span>
-                            <div class="text-[10px] mt-1">"EXR · HDR · PNG · TIFF · JPEG"</div>
+                            <div class="text-[10px] mt-1">"EXR · HDR · PNG · TIFF · JPEG · .cube / .3dl LUT"</div>
                         </div>
                     }.into_any()
                 } else {
@@ -140,7 +156,7 @@ pub fn DropZone() -> impl IntoView {
                 <input
                     type="file"
                     multiple=true
-                    accept=".exr,.hdr,.pic,.png,.tif,.tiff,.jpg,.jpeg,image/*"
+                    accept=".exr,.hdr,.pic,.png,.tif,.tiff,.jpg,.jpeg,.cube,.3dl,image/*"
                     class="hidden"
                     on:change=on_change
                 />

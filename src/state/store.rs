@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use std::sync::Arc;
 
 use super::view::{Camera, Channel, ClipFlags, DiffMode, Tonemap, ViewMode};
+use crate::io::lut::Lut;
 use crate::io::HdrImage;
 
 #[derive(Clone, Copy)]
@@ -33,6 +34,8 @@ pub struct Store {
     pub piecewise_toe_length: RwSignal<f32>,
     pub piecewise_shoulder_strength: RwSignal<f32>,
     pub piecewise_shoulder_length: RwSignal<f32>,
+    /// Optional 3D LUT used by the LUT tone-map mode.
+    pub lut: RwSignal<Option<Arc<Lut>>>,
     /// Cursor position in image pixel coordinates (None = outside).
     pub probe_px: RwSignal<Option<(i32, i32)>>,
     /// HDR canvas state, set after `render::context` boots.
@@ -69,6 +72,7 @@ impl Store {
             piecewise_toe_length: RwSignal::new(0.5),
             piecewise_shoulder_strength: RwSignal::new(2.0),
             piecewise_shoulder_length: RwSignal::new(0.5),
+            lut: RwSignal::new(None),
             probe_px: RwSignal::new(None),
             hdr_active: RwSignal::new(false),
             gpu_available: RwSignal::new(None),

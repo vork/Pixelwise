@@ -8,8 +8,8 @@ use crate::state::store::Store;
 use crate::state::view::{DisplayUniform, ViewMode};
 
 use super::context::RenderContext;
-use super::pipeline::{ComparePipeline, CompareUniform, DisplayPipeline};
-use super::texture::{GpuImage, Samplers};
+use super::pipeline::{lut_bgl, ComparePipeline, CompareUniform, DisplayPipeline};
+use super::texture::{upload_lut, GpuImage, Samplers};
 
 pub struct FrameResources {
     pub display: DisplayPipeline,
@@ -19,15 +19,36 @@ pub struct FrameResources {
     pub mipmap_shader: wgpu::ShaderModule,
     pub primary: Option<Arc<GpuImage>>,
     pub secondary: Option<Arc<GpuImage>>,
+    pub lut_bgl: wgpu::BindGroupLayout,
+    pub lut_sampler: wgpu::Sampler,
+    /// Currently-uploaded LUT (None until the user loads one). When None we
+    /// bind the identity placeholder so the bind group is always valid.
+    pub lut_loaded: Option<Arc<crate::io::lut::Lut>>,
+    pub lut_view: wgpu::TextureView,
+    // Keep the texture alive alongside the view.
+    pub lut_texture: wgpu::Texture,
 }
 
 impl FrameResources {
     pub fn new(ctx: &RenderContext) -> Self {
-        let display = DisplayPipeline::new(&ctx.device, ctx.surface_format);
-        let compare = ComparePipeline::new(&ctx.device, ctx.surface_format);
+        let lut_bgl = lut_bgl(&ctx.device);
+        let display = DisplayPipeline::new(&ctx.device, ctx.surface_format, &lut_bgl);
+        let compare = ComparePipeline::new(&ctx.device, ctx.surface_format, &lut_bgl);
         let samplers = Samplers::new(&ctx.device);
         let ramp = super::texture::create_ramp(&ctx.device, &ctx.queue);
         let mipmap_shader = super::pipeline::mipmap_module(&ctx.device);
+        let identity = crate::io::lut::Lut::identity();
+        let (lut_texture, lut_view) = upload_lut(&ctx.device, &ctx.queue, &identity);
+        let lut_sampler = ctx.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("lut sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
         Self {
             display,
             compare,
@@ -36,6 +57,11 @@ impl FrameResources {
             mipmap_shader,
             primary: None,
             secondary: None,
+            lut_bgl,
+            lut_sampler,
+            lut_loaded: None,
+            lut_view,
+            lut_texture,
         }
     }
 
@@ -72,6 +98,20 @@ impl FrameResources {
             }
         } else {
             self.secondary = None;
+        }
+        // Re-upload the LUT only when the Arc identity changes.
+        let current_lut = store.lut.get_untracked();
+        let needs_lut = match (&self.lut_loaded, &current_lut) {
+            (Some(a), Some(b)) => !Arc::ptr_eq(a, b),
+            (None, Some(_)) | (Some(_), None) => true,
+            (None, None) => false,
+        };
+        if needs_lut {
+            let to_upload = current_lut.clone().unwrap_or_else(crate::io::lut::Lut::identity);
+            let (tex, view) = upload_lut(&ctx.device, &ctx.queue, &to_upload);
+            self.lut_texture = tex;
+            self.lut_view = view;
+            self.lut_loaded = current_lut;
         }
     }
 }
@@ -157,8 +197,17 @@ pub fn render(ctx: &mut RenderContext, fr: &mut FrameResources, store: &Store) {
                     wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(&fr.samplers.linear) },
                 ],
             });
+            let lut_bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("lut bg"),
+                layout: &fr.lut_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&fr.lut_view) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&fr.lut_sampler) },
+                ],
+            });
             rp.set_pipeline(&fr.compare.pipeline);
             rp.set_bind_group(0, &bg, &[]);
+            rp.set_bind_group(1, &lut_bg, &[]);
             rp.draw(0..3, 0..1);
         } else {
             // For Flicker, swap A↔B based on the toggle so the display
@@ -185,8 +234,17 @@ pub fn render(ctx: &mut RenderContext, fr: &mut FrameResources, store: &Store) {
                         wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&fr.samplers.linear) },
                     ],
                 });
+                let lut_bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("lut bg"),
+                    layout: &fr.lut_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&fr.lut_view) },
+                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&fr.lut_sampler) },
+                    ],
+                });
                 rp.set_pipeline(&fr.display.pipeline);
                 rp.set_bind_group(0, &bg, &[]);
+                rp.set_bind_group(1, &lut_bg, &[]);
                 rp.draw(0..3, 0..1);
             }
         }

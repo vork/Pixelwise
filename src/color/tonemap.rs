@@ -22,6 +22,40 @@ fn encode_srgb(rgb: [f32; 3]) -> [f32; 3] {
     rgb.map(linear_to_srgb_one)
 }
 
+/// Trilinear lookup into a 3D LUT — CPU mirror of the GPU's `textureSample`
+/// on the LUT texture, used by the pixel-probe "display" readout so it
+/// matches what's on screen.
+pub fn lut_trilinear(rgb: [f32; 3], lut: &crate::io::lut::Lut) -> [f32; 3] {
+    let s = lut.size as usize;
+    let max_idx = (s as i32 - 1).max(0);
+    let r = rgb[0].clamp(0.0, 1.0) * max_idx as f32;
+    let g = rgb[1].clamp(0.0, 1.0) * max_idx as f32;
+    let b = rgb[2].clamp(0.0, 1.0) * max_idx as f32;
+    let r0 = r.floor() as i32;
+    let g0 = g.floor() as i32;
+    let b0 = b.floor() as i32;
+    let r1 = (r0 + 1).min(max_idx);
+    let g1 = (g0 + 1).min(max_idx);
+    let b1 = (b0 + 1).min(max_idx);
+    let fr = r - r0 as f32;
+    let fg = g - g0 as f32;
+    let fb = b - b0 as f32;
+    let fetch = |ri: i32, gi: i32, bi: i32| -> [f32; 3] {
+        let i = ((bi as usize * s + gi as usize) * s + ri as usize) * 3;
+        [lut.data[i], lut.data[i + 1], lut.data[i + 2]]
+    };
+    let mix = |a: [f32; 3], b: [f32; 3], t: f32| -> [f32; 3] {
+        [a[0] * (1.0 - t) + b[0] * t, a[1] * (1.0 - t) + b[1] * t, a[2] * (1.0 - t) + b[2] * t]
+    };
+    let c00 = mix(fetch(r0, g0, b0), fetch(r1, g0, b0), fr);
+    let c01 = mix(fetch(r0, g0, b1), fetch(r1, g0, b1), fr);
+    let c10 = mix(fetch(r0, g1, b0), fetch(r1, g1, b0), fr);
+    let c11 = mix(fetch(r0, g1, b1), fetch(r1, g1, b1), fr);
+    let c0 = mix(c00, c10, fg);
+    let c1 = mix(c01, c11, fg);
+    mix(c0, c1, fb)
+}
+
 /// Raw scalar evaluators for the curve-preview UI. These return the
 /// operator's intrinsic transformation only — no extra sRGB step applied to
 /// Linear / Reinhard / ACES / Piecewise (the renderer adds that downstream).

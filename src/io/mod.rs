@@ -1,6 +1,7 @@
 pub mod decode;
 pub mod exr;
 pub mod hdr;
+pub mod lut;
 pub mod png;
 pub mod tiff;
 pub mod url;

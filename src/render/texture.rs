@@ -97,6 +97,56 @@ impl Samplers {
     }
 }
 
+/// Upload a 3D LUT to an `Rgba16Float` 3D texture. The source data is the
+/// `.cube` ordering (R fastest, G next, B slowest), interleaved RGB.
+pub fn upload_lut(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    lut: &crate::io::lut::Lut,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let size = lut.size;
+    // Convert RGB → RGBA f16. Padding alpha = 1.0 keeps things simple and
+    // keeps the texture format aligned for the GPU.
+    use half::f16;
+    let texel_count = (size as usize).pow(3);
+    let mut data: Vec<f16> = Vec::with_capacity(texel_count * 4);
+    for i in 0..texel_count {
+        let base = i * 3;
+        data.push(f16::from_f32(lut.data[base]));
+        data.push(f16::from_f32(lut.data[base + 1]));
+        data.push(f16::from_f32(lut.data[base + 2]));
+        data.push(f16::ONE);
+    }
+    let bytes: &[u8] = bytemuck::cast_slice(&data);
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("lut3d"),
+        size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: size },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        bytes,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(size * 8), // 4 channels * 2 bytes
+            rows_per_image: Some(size),
+        },
+        wgpu::Extent3d { width: size, height: size, depth_or_array_layers: size },
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
+}
+
 /// A 1D viridis-style ramp for the false-color channel mode.
 pub fn create_ramp(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
     let bytes = crate::color::lut::viridis_ramp(256);

@@ -39,6 +39,8 @@ struct CompareParams {
 @group(0) @binding(5) var<uniform> cmp: CompareParams;
 @group(0) @binding(6) var t_ramp: texture_1d<f32>;
 @group(0) @binding(7) var s_ramp: sampler;
+@group(1) @binding(0) var t_lut: texture_3d<f32>;
+@group(1) @binding(1) var s_lut: sampler;
 
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -62,7 +64,10 @@ fn vs(@builtin(vertex_index) idx: u32) -> VsOut {
     return out;
 }
 
-fn process(c: vec4<f32>, in_uv_px: vec2<f32>) -> vec3<f32> {
+// Pre-LUT pipeline: scene-linear sample → exposure → channel → tonemap.
+// Returns the value that should be fed into the LUT (or shown directly when
+// the canvas is HDR and we want to keep scene-linear values).
+fn prepare_pre_lut(c: vec4<f32>) -> vec3<f32> {
     let nan = any(c.rgb != c.rgb);
     let inf = is_inf(c.r) || is_inf(c.g) || is_inf(c.b);
     var lin = c.rgb;
@@ -72,6 +77,15 @@ fn process(c: vec4<f32>, in_uv_px: vec2<f32>) -> vec3<f32> {
     var rgb = apply_channel(vec4<f32>(lin, c.a), params.channel, t_ramp, s_ramp);
     if (params.output_is_hdr == 0u) {
         rgb = tonemap_to_display(rgb, params.tonemap, params.piecewise, params.tm_extras);
+    }
+    return rgb;
+}
+
+fn finish(c: vec4<f32>, in_uv_px: vec2<f32>, lut_out: vec3<f32>, pre_lut: vec3<f32>) -> vec3<f32> {
+    let lin = c.rgb * exp2(params.exposure);
+    var rgb = pre_lut;
+    if (params.output_is_hdr == 0u) {
+        rgb = lut_out;
     }
     return apply_clipping(rgb, lin, in_uv_px, params.clip_flags);
 }
@@ -88,15 +102,21 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let samp_a = select(a_nearest, a_linear, d > 0.16);
     let samp_b = select(b_nearest, b_linear, d > 0.16);
 
+    // Tonemap each side then LUT lookup — all in uniform control flow so
+    // textureSample(t_lut, ...) is legal.
+    let pre_lut_a = prepare_pre_lut(samp_a);
+    let pre_lut_b = prepare_pre_lut(samp_b);
+    let lut_a = textureSample(t_lut, s_lut, clamp(pre_lut_a, vec3<f32>(0.0), vec3<f32>(1.0))).rgb;
+    let lut_b = textureSample(t_lut, s_lut, clamp(pre_lut_b, vec3<f32>(0.0), vec3<f32>(1.0))).rgb;
+
     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
         let cell = floor(in.pos.xy / 24.0);
         let s = (cell.x + cell.y) - 2.0 * floor((cell.x + cell.y) * 0.5);
         let bg = mix(vec3<f32>(0.07, 0.07, 0.10), vec3<f32>(0.10, 0.10, 0.13), s);
         return vec4<f32>(bg, 1.0);
     }
-
-    let rgb_a = process(samp_a, in.uv_px);
-    let rgb_b = process(samp_b, in.uv_px);
+    let rgb_a = finish(samp_a, in.uv_px, lut_a, pre_lut_a);
+    let rgb_b = finish(samp_b, in.uv_px, lut_b, pre_lut_b);
 
     var out: vec3<f32>;
     if (cmp.mode == 0u) {
