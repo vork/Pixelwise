@@ -92,6 +92,11 @@ impl Store {
     }
 
     /// Remove an image from the list and fix up primary/secondary indices.
+    ///
+    /// Invariant maintained: A is set whenever any image exists. If the user
+    /// unloads the image that's currently displayed (A), we promote B if it's
+    /// set, otherwise pick the next remaining image — so the viewport never
+    /// goes blank while there's still something to show.
     pub fn remove_image(&self, idx: usize) {
         let len = self.images.with_untracked(|v| v.len());
         if idx >= len {
@@ -100,13 +105,30 @@ impl Store {
         self.images.update(|v| {
             v.remove(idx);
         });
+        let new_len = len - 1;
         let fix = |opt: Option<usize>| match opt {
             Some(i) if i == idx => None,
             Some(i) if i > idx => Some(i - 1),
             other => other,
         };
-        let p = fix(self.primary.get_untracked());
-        let s = fix(self.secondary.get_untracked());
+        let mut p = fix(self.primary.get_untracked());
+        let mut s = fix(self.secondary.get_untracked());
+
+        // Keep something in A as long as any image remains.
+        if p.is_none() && new_len > 0 {
+            if let Some(b) = s.take() {
+                // Promote B to A — matches toggle_primary's "swap-down" behavior
+                // when A is turned off via the per-image button.
+                p = Some(b);
+            } else {
+                // No B to promote — pick the "next in line": the slot the
+                // removed image occupied (now holding the image that was
+                // immediately after it), or the new last slot if we removed
+                // the tail.
+                p = Some(idx.min(new_len - 1));
+            }
+        }
+
         self.primary.set(p);
         self.secondary.set(s);
         self.render_epoch.update(|n| *n += 1);
