@@ -23,7 +23,7 @@ struct DisplayParams {
     height: u32,
     false_color_min: f32,
     false_color_max: f32,
-    _pad0: f32,
+    lut_active: u32,
     _pad1: f32,
     _pad2: f32,
 };
@@ -99,7 +99,12 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     }
 
     var rgb = pre_lut;
-    if (params.output_is_hdr == 0u) {
+    // Only consume the LUT output when the user has actually loaded one.
+    // The bind group always holds a 2×2×2 identity placeholder so the
+    // sample call is valid, but linear sampling with ClampToEdge crushes
+    // [0, 0.25] → texel0 and [0.75, 1.0] → texel1 — i.e. a 2×2×2 "identity"
+    // LUT is NOT identity over the unit interval. Gating avoids that.
+    if (params.output_is_hdr == 0u && params.lut_active != 0u) {
         rgb = lut_out;
     }
     rgb = apply_clipping(rgb, lin, in.uv_px, params.clip_flags);

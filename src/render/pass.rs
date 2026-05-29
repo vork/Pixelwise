@@ -165,7 +165,7 @@ pub fn render(ctx: &mut RenderContext, fr: &mut FrameResources, store: &Store) {
             let (Some(a), Some(b)) = (fr.primary.as_ref(), fr.secondary.as_ref()) else {
                 return;
             };
-            let du = compute_display_uniform(store, ctx, a, true);
+            let du = compute_display_uniform(store, ctx, a);
             ctx.queue.write_buffer(&fr.compare.display_uniform, 0, bytemuck::bytes_of(&du));
             let cu = CompareUniform {
                 mode: match mode {
@@ -220,7 +220,7 @@ pub fn render(ctx: &mut RenderContext, fr: &mut FrameResources, store: &Store) {
                 fr.primary.as_ref()
             };
             if let Some(a) = pick {
-                let du = compute_display_uniform(store, ctx, a, false);
+                let du = compute_display_uniform(store, ctx, a);
                 ctx.queue.write_buffer(&fr.display.uniform, 0, bytemuck::bytes_of(&du));
                 let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("display bg"),
@@ -258,7 +258,6 @@ fn compute_display_uniform(
     store: &Store,
     ctx: &RenderContext,
     img: &GpuImage,
-    is_compare: bool,
 ) -> DisplayUniform {
     let cam = store.camera.get_untracked();
     let (sw, sh) = ctx.size;
@@ -299,7 +298,7 @@ fn compute_display_uniform(
         height: img.height,
         false_color_min: 0.0,
         false_color_max: 1.0,
-        _pad0: is_compare as u32 as f32,
+        lut_active: store.lut.get_untracked().is_some() as u32,
         _pad1: 0.0,
         _pad2: 0.0,
     }

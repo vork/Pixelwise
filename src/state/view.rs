@@ -204,7 +204,11 @@ pub struct DisplayUniform {
     pub height: u32,
     pub false_color_min: f32,
     pub false_color_max: f32,
-    pub _pad0: f32,
+    /// 1 when the user has loaded a LUT; 0 otherwise. The bind group always
+    /// holds a 2×2×2 identity texture as a placeholder, but linear sampling
+    /// with ClampToEdge crushes the [0, 0.25] and [0.75, 1.0] ranges to 0/1.
+    /// So we gate the actual LUT lookup result behind this flag.
+    pub lut_active: u32,
     pub _pad1: f32,
     pub _pad2: f32,
 }
@@ -224,7 +228,7 @@ impl Default for DisplayUniform {
             height: 1,
             false_color_min: 0.0,
             false_color_max: 1.0,
-            _pad0: 0.0,
+            lut_active: 0,
             _pad1: 0.0,
             _pad2: 0.0,
         }

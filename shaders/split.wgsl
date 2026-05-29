@@ -16,7 +16,7 @@ struct DisplayParams {
     height: u32,
     false_color_min: f32,
     false_color_max: f32,
-    _pad0: f32,
+    lut_active: u32,
     _pad1: f32,
     _pad2: f32,
 };
@@ -84,7 +84,10 @@ fn prepare_pre_lut(c: vec4<f32>) -> vec3<f32> {
 fn finish(c: vec4<f32>, in_uv_px: vec2<f32>, lut_out: vec3<f32>, pre_lut: vec3<f32>) -> vec3<f32> {
     let lin = c.rgb * exp2(params.exposure);
     var rgb = pre_lut;
-    if (params.output_is_hdr == 0u) {
+    // Same gating as display.wgsl: only consume lut_out when a real LUT is
+    // loaded — the identity 2×2×2 placeholder would otherwise crush the
+    // dark and bright quartiles.
+    if (params.output_is_hdr == 0u && params.lut_active != 0u) {
         rgb = lut_out;
     }
     return apply_clipping(rgb, lin, in_uv_px, params.clip_flags);
