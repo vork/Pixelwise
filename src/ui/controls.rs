@@ -511,7 +511,6 @@ fn ChanRow(
             <span class="w-3 text-center font-semibold" style=format!("color:{dot}")>{tag}</span>
             <select
                 class="select flex-1"
-                prop:value=current.to_string()
                 on:change=move |ev: ev::Event| {
                     if let Some(t) = ev.target() {
                         if let Ok(i) = t.unchecked_into::<HtmlInputElement>().value().parse::<usize>() {
@@ -519,8 +518,12 @@ fn ChanRow(
                         }
                     }
                 }>
+                // Mark the active option `selected` directly: setting the
+                // select's `value` prop before its <option> children mount
+                // leaves selectedIndex at 0. The panel re-renders wholesale on
+                // every change, so a plain (non-reactive) flag is sufficient.
                 {options.into_iter().map(|(i, name)| {
-                    view! { <option value=i.to_string()>{name}</option> }
+                    view! { <option value=i.to_string() selected=i == current>{name}</option> }
                 }).collect_view()}
             </select>
         </div>
