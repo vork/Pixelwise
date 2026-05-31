@@ -42,5 +42,6 @@ pub fn decode(bytes: &[u8], name: &str) -> Result<HdrImage, DecodeError> {
         is_hdr: true,
         source_bytes: bytes.len(),
         format_label: "RGBE",
+        multichannel: None,
     })
 }

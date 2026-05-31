@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use super::view::{Camera, Channel, ClipFlags, DiffMode, Tonemap, ViewMode};
 use crate::io::lut::Lut;
-use crate::io::HdrImage;
+use crate::io::{ChannelSelection, HdrImage};
 
 #[derive(Clone, Copy)]
 pub struct Store {
@@ -169,6 +169,24 @@ impl Store {
             }
         } else {
             self.secondary.set(Some(idx));
+        }
+    }
+
+    /// Remap which source channels feed R/G/B/A for a multichannel image.
+    /// Rebuilds the displayed RGBA buffer in place (cheap — the planar source
+    /// channels are shared) and bumps the render epoch so the GPU re-uploads.
+    pub fn set_channel_selection(&self, image_idx: usize, sel: ChannelSelection) {
+        let mut changed = false;
+        self.images.update(|v| {
+            if let Some(slot) = v.get_mut(image_idx) {
+                if slot.multichannel.is_some() {
+                    *slot = Arc::new(slot.with_selection(sel));
+                    changed = true;
+                }
+            }
+        });
+        if changed {
+            self.render_epoch.update(|n| *n += 1);
         }
     }
 

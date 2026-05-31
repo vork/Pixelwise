@@ -1,9 +1,10 @@
 //! OpenEXR decode via the `exr` crate (`exrs`).
 //!
-//! Returns RGBA f16, interleaved. We use the permissive `all_channels` reader
-//! so files with non-standard channel names (e.g. `ch00..ch09` from renderer
-//! AOVs) still load — we look up R/G/B/A by common name conventions and fall
-//! back to the first three channels by index when the layer doesn't use them.
+//! We use the permissive `all_channels` reader and keep *every* channel planar
+//! (e.g. `ch00..ch09` or `diffuse.R`/`specular.B` AOVs from a multilayer
+//! render), so the user can map any channel onto R/G/B/A in the UI. The
+//! initial RGBA mapping is chosen by [`HdrImage::from_source_channels`] using
+//! the usual name conventions.
 
 use std::io::Cursor;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use ::exr::prelude::{read, FlatSamples, Sample};
 use exr_pre::{ReadChannels as _, ReadLayers as _};
 use half::f16;
 
-use super::{ChannelLayout, HdrImage};
+use super::{HdrImage, SourceChannel};
 use crate::color::space::ColorSpace;
 use crate::io::decode::DecodeError;
 
@@ -49,70 +50,51 @@ pub fn decode(bytes: &[u8], name: &str) -> Result<HdrImage, DecodeError> {
         }
     }
 
-    // Channel-name lookup: match the leaf component (`foo.R` -> `R`) case-
-    // insensitively against any of the supplied aliases.
-    let pick = |aliases: &[&str]| -> Option<usize> {
-        channels.iter().position(|ch| {
-            let name = ch.name.to_string().to_ascii_lowercase();
-            let leaf = name.rsplit('.').next().unwrap_or(name.as_str());
-            aliases.iter().any(|a| *a == leaf)
-        })
-    };
-
-    let r_idx = pick(&["r", "red"]).unwrap_or(0);
-    let g_idx = pick(&["g", "green"]).unwrap_or(1.min(channels.len() - 1));
-    let b_idx = pick(&["b", "blue"]).unwrap_or(2.min(channels.len() - 1));
-    let a_idx = pick(&["a", "alpha"]);
-
-    let total = w * h * 4;
-    let mut data = vec![f16::ZERO; total];
-    if a_idx.is_none() {
-        // No alpha in source — default to fully opaque.
-        for i in (3..total).step_by(4) {
-            data[i] = f16::ONE;
-        }
-    }
-
-    let copy = |dst: &mut [f16], samples: &FlatSamples, slot: usize| {
-        let len = (w * h).min(samples.len());
+    // Lift every channel to a planar f16 plane, preserving file order and the
+    // full (layer-qualified) channel name.
+    let plane_of = |samples: &FlatSamples| -> Arc<[f16]> {
+        let n = w * h;
+        let len = n.min(samples.len());
+        let mut plane = vec![f16::ZERO; n];
         for i in 0..len {
             let v = match samples.value_by_flat_index(i) {
                 Sample::F16(x) => x.to_f32(),
                 Sample::F32(x) => x,
                 Sample::U32(x) => x as f32,
             };
-            dst[i * 4 + slot] = f16::from_f32(v);
+            plane[i] = f16::from_f32(v);
         }
+        Arc::from(plane.into_boxed_slice())
     };
 
-    copy(&mut data, &channels[r_idx].sample_data, 0);
-    copy(&mut data, &channels[g_idx].sample_data, 1);
-    copy(&mut data, &channels[b_idx].sample_data, 2);
-    if let Some(ai) = a_idx {
-        copy(&mut data, &channels[ai].sample_data, 3);
-    }
+    let source_channels: Vec<SourceChannel> = channels
+        .iter()
+        .map(|ch| SourceChannel {
+            name: ch.name.to_string(),
+            samples: plane_of(&ch.sample_data),
+        })
+        .collect();
 
     log::info!(
-        "exr {name}: {w}x{h}, {} channel(s), mapped R={} G={} B={} A={}",
-        channels.len(),
-        channels[r_idx].name,
-        channels[g_idx].name,
-        channels[b_idx].name,
-        a_idx.map(|i| channels[i].name.to_string()).unwrap_or_else(|| "<none>".into()),
+        "exr {name}: {w}x{h}, {} channel(s): {}",
+        source_channels.len(),
+        source_channels
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
     );
 
-    Ok(HdrImage {
-        name: name.to_string(),
-        width: w as u32,
-        height: h as u32,
-        channels: ChannelLayout::Rgba,
-        data: Arc::from(data.into_boxed_slice()),
+    Ok(HdrImage::from_source_channels(
+        name.to_string(),
+        w as u32,
+        h as u32,
+        source_channels,
         // EXR convention: scene-linear, sRGB primaries (unless overridden in
         // the chromaticities attribute — we don't read that yet).
-        color_space: ColorSpace::LinearSRgb,
-        has_alpha: a_idx.is_some(),
-        is_hdr: true,
-        source_bytes: bytes.len(),
-        format_label: "EXR",
-    })
+        ColorSpace::LinearSRgb,
+        true,
+        bytes.len(),
+        "EXR",
+    ))
 }
