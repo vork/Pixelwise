@@ -83,6 +83,7 @@ pub fn Viewport() -> impl IntoView {
             let _ = store.piecewise_shoulder_strength.get();
             let _ = store.piecewise_shoulder_length.get();
             let _ = store.lut.get();
+            let _ = store.hdr_enabled.get();
             let _ = store.render_epoch.get();
             if let Some(g) = gfx.borrow_mut().as_mut() {
                 g.needs_redraw = true;
