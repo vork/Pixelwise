@@ -98,6 +98,26 @@ pub struct MultiChannel {
 }
 
 impl MultiChannel {
+    /// True when the source is just a single ordinary R/G/B(/A) set — nothing
+    /// worth a channel picker, so the UI can keep the plain layout.
+    pub fn is_simple_rgba(&self) -> bool {
+        if self.channels.len() > 4 {
+            return false;
+        }
+        let mut layer: Option<&str> = None;
+        for ch in self.channels.iter() {
+            match layer {
+                None => layer = Some(ch.layer()),
+                Some(prev) if prev != ch.layer() => return false,
+                _ => {}
+            }
+            if !matches!(ch.leaf().to_ascii_lowercase().as_str(), "r" | "g" | "b" | "a") {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Group channels by their layer prefix, preserving first-seen order.
     pub fn layers(&self) -> Vec<Layer> {
         let mut layers: Vec<Layer> = Vec::new();

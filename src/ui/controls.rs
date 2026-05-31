@@ -416,6 +416,10 @@ pub fn ChannelMapPanel() -> impl IntoView {
             let idx = store.primary.get()?;
             let img = store.images.with(|v| v.get(idx).cloned())?;
             let mc = img.multichannel.clone()?;
+            // Plain RGB(A) images don't need a picker — keep the simple layout.
+            if mc.is_simple_rgba() {
+                return None;
+            }
             let channels = mc.channels.clone();
             let sel = mc.selection;
 
@@ -440,13 +444,19 @@ pub fn ChannelMapPanel() -> impl IntoView {
             let alpha_on = sel.a.is_some();
 
             Some(view! {
-                <section class="panel-inset p-2 space-y-2">
-                    <header class="flex items-center justify-between">
+                // Collapsible: multichannel inspection is opt-in, so it folds
+                // away to keep the controls column tidy.
+                <details class="panel-inset p-2 group" open=true>
+                    <summary class="flex items-center justify-between cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
                         <span class="label">"Channels"</span>
-                        <span class="text-[10px] text-muted nums">
-                            {format!("{} · {} ch", img.format_label, channels.len())}
+                        <span class="flex items-center gap-2">
+                            <span class="text-[10px] text-muted nums">
+                                {format!("{} · {} ch", img.format_label, channels.len())}
+                            </span>
+                            <span class="text-muted text-[10px] transition-transform group-open:rotate-90">"▸"</span>
                         </span>
-                    </header>
+                    </summary>
+                  <div class="space-y-2 pt-2">
 
                     {show_layers.then(|| view! {
                         <div class="flex flex-wrap gap-1">
@@ -491,7 +501,8 @@ pub fn ChannelMapPanel() -> impl IntoView {
                             view! { <span class="text-muted text-[10px]">"none (opaque)"</span> }.into_any()
                         }}
                     </div>
-                </section>
+                  </div>
+                </details>
             })
         }}
     }
