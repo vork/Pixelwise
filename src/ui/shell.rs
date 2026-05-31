@@ -145,7 +145,17 @@ fn TopBar(left_open: RwSignal<bool>, right_open: RwSignal<bool>) -> impl IntoVie
                     None => view! { <span class="chip">"Booting…"</span> }.into_any(),
                 }}
                 {move || if hdr() {
-                    view! { <span class="chip-ok">"HDR · P3"</span> }.into_any()
+                    // HDR canvas available — let the user flip to an SDR
+                    // preview (tone-mapped) to inspect the non-HDR look.
+                    let on = move || store.hdr_enabled.get();
+                    view! {
+                        <button
+                            class=move || if on() { "chip-ok cursor-pointer" } else { "chip-warn cursor-pointer" }
+                            title="Toggle HDR output vs. SDR preview"
+                            on:click=move |_| store.hdr_enabled.update(|v| *v = !*v)>
+                            {move || if on() { "HDR · P3" } else { "SDR preview" }}
+                        </button>
+                    }.into_any()
                 } else {
                     view! { <span class="chip hidden sm:inline-flex">"SDR"</span> }.into_any()
                 }}

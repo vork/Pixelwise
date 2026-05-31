@@ -38,8 +38,13 @@ pub struct Store {
     pub lut: RwSignal<Option<Arc<Lut>>>,
     /// Cursor position in image pixel coordinates (None = outside).
     pub probe_px: RwSignal<Option<(i32, i32)>>,
-    /// HDR canvas state, set after `render::context` boots.
+    /// HDR canvas state, set after `render::context` boots (true only when the
+    /// browser/display actually gave us an extended-range canvas).
     pub hdr_active: RwSignal<bool>,
+    /// User toggle for HDR output. When the canvas is HDR-capable this lets the
+    /// user preview the SDR-tonemapped look without losing the HDR canvas.
+    /// Ignored when `hdr_active` is false.
+    pub hdr_enabled: RwSignal<bool>,
     pub gpu_available: RwSignal<Option<bool>>,
     /// Bumped whenever the renderer should re-issue mip/upload work.
     pub render_epoch: RwSignal<u64>,
@@ -75,6 +80,7 @@ impl Store {
             lut: RwSignal::new(None),
             probe_px: RwSignal::new(None),
             hdr_active: RwSignal::new(false),
+            hdr_enabled: RwSignal::new(true),
             gpu_available: RwSignal::new(None),
             render_epoch: RwSignal::new(0),
         }

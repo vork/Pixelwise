@@ -293,7 +293,9 @@ fn compute_display_uniform(
         tonemap: store.tonemap.get_untracked() as u32,
         channel: store.channel.get_untracked() as u32,
         clip_flags: store.clip.get_untracked().bits(),
-        output_is_hdr: ctx.hdr_active as u32,
+        // HDR output only when the canvas supports it AND the user hasn't
+        // switched to the SDR preview.
+        output_is_hdr: (ctx.hdr_active && store.hdr_enabled.get_untracked()) as u32,
         width: img.width,
         height: img.height,
         false_color_min: 0.0,
