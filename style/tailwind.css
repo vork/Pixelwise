@@ -40,7 +40,10 @@
     @apply inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs
            rounded border border-border bg-panel2 text-text
            hover:border-accentA/60 hover:bg-panel
-           active:translate-y-px transition-colors select-none cursor-pointer;
+           active:translate-y-px transition-colors select-none cursor-pointer
+           disabled:opacity-40 disabled:cursor-not-allowed
+           disabled:hover:border-border disabled:hover:bg-panel2
+           disabled:active:translate-y-0;
   }
 
   .btn-pri {
@@ -95,7 +98,8 @@
     @apply inline-flex bg-panel2 border border-border rounded p-0.5 text-xs;
   }
   .seg > button {
-    @apply px-2 py-0.5 rounded text-muted hover:text-text cursor-pointer;
+    @apply px-2 py-0.5 rounded text-muted hover:text-text cursor-pointer
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted;
   }
   .seg > button.active {
     @apply bg-bg text-text;
