@@ -6,6 +6,7 @@ use wasm_bindgen::JsCast;
 use web_sys::HtmlInputElement;
 
 use crate::color::tonemap as tm;
+use crate::io::ChannelSelection;
 use crate::state::store::use_store;
 use crate::state::view::{Channel, ClipFlags, Tonemap};
 
@@ -404,19 +405,153 @@ fn TonemapCurve(mode: Tonemap) -> impl IntoView {
     }
 }
 
+/// Source-channel mapping for multichannel images (e.g. multilayer EXR AOVs).
+/// Lets the user choose which channels drive R/G/B and an *optional* alpha,
+/// plus one-click presets for each detected layer.
+#[component]
+pub fn ChannelMapPanel() -> impl IntoView {
+    let store = use_store();
+    view! {
+        {move || {
+            let idx = store.primary.get()?;
+            let img = store.images.with(|v| v.get(idx).cloned())?;
+            let mc = img.multichannel.clone()?;
+            let channels = mc.channels.clone();
+            let sel = mc.selection;
+
+            // Options shared by every selector: (index, full channel name).
+            let options: Vec<(usize, String)> =
+                channels.iter().enumerate().map(|(i, c)| (i, c.name.clone())).collect();
+
+            // Layer presets (only worth showing when there's more than one).
+            let layers = mc.layers();
+            let layer_presets: Vec<(String, ChannelSelection)> = layers
+                .iter()
+                .map(|l| (l.name.clone(), mc.selection_for_layer(l)))
+                .collect();
+            let show_layers = layer_presets.len() > 1;
+
+            // Default channel to use when the user enables alpha: a real alpha
+            // channel if one exists, otherwise the last channel.
+            let alpha_default = channels
+                .iter()
+                .position(|c| matches!(c.leaf().to_ascii_lowercase().as_str(), "a" | "alpha"))
+                .unwrap_or(channels.len().saturating_sub(1));
+            let alpha_on = sel.a.is_some();
+
+            Some(view! {
+                <section class="panel-inset p-2 space-y-2">
+                    <header class="flex items-center justify-between">
+                        <span class="label">"Channels"</span>
+                        <span class="text-[10px] text-muted nums">
+                            {format!("{} · {} ch", img.format_label, channels.len())}
+                        </span>
+                    </header>
+
+                    {show_layers.then(|| view! {
+                        <div class="flex flex-wrap gap-1">
+                            {layer_presets.into_iter().map(|(name, lsel)| {
+                                let active = lsel == sel;
+                                view! {
+                                    <button
+                                        class=move || if active { "btn btn-pri text-[10px] px-2 py-0.5" }
+                                                      else { "btn text-[10px] px-2 py-0.5" }
+                                        title="Map this layer to RGB(A)"
+                                        on:click=move |_| store.set_channel_selection(idx, lsel)>
+                                        {name}
+                                    </button>
+                                }
+                            }).collect_view()}
+                        </div>
+                    })}
+
+                    <ChanRow tag="R" dot="#ff8a8a" options=options.clone() current=sel.r
+                        on_pick=Callback::new(move |i| store.set_channel_selection(idx, ChannelSelection { r: i, ..sel })) />
+                    <ChanRow tag="G" dot="#7ddc8e" options=options.clone() current=sel.g
+                        on_pick=Callback::new(move |i| store.set_channel_selection(idx, ChannelSelection { g: i, ..sel })) />
+                    <ChanRow tag="B" dot="#8aa9ff" options=options.clone() current=sel.b
+                        on_pick=Callback::new(move |i| store.set_channel_selection(idx, ChannelSelection { b: i, ..sel })) />
+
+                    <div class="flex items-center gap-2 text-[11px] pt-0.5 border-t border-border mt-1">
+                        <button
+                            class=move || if alpha_on { "btn btn-pri text-[10px] w-12" } else { "btn text-[10px] w-12" }
+                            title="Alpha is optional — toggle whether an alpha channel is used"
+                            on:click=move |_| {
+                                let next = if alpha_on { None } else { Some(alpha_default) };
+                                store.set_channel_selection(idx, ChannelSelection { a: next, ..sel });
+                            }>
+                            "Alpha"
+                        </button>
+                        {if alpha_on {
+                            view! {
+                                <ChanRow tag="A" dot="#cfd0e8" options=options.clone() current=sel.a.unwrap_or(0)
+                                    on_pick=Callback::new(move |i| store.set_channel_selection(idx, ChannelSelection { a: Some(i), ..sel })) />
+                            }.into_any()
+                        } else {
+                            view! { <span class="text-muted text-[10px]">"none (opaque)"</span> }.into_any()
+                        }}
+                    </div>
+                </section>
+            })
+        }}
+    }
+}
+
+/// One R/G/B/A assignment row: a colored tag and a channel dropdown.
+#[component]
+fn ChanRow(
+    tag: &'static str,
+    dot: &'static str,
+    options: Vec<(usize, String)>,
+    current: usize,
+    on_pick: Callback<usize>,
+) -> impl IntoView {
+    view! {
+        <div class="flex items-center gap-2 text-[11px] flex-1">
+            <span class="w-3 text-center font-semibold" style=format!("color:{dot}")>{tag}</span>
+            <select
+                class="select flex-1"
+                prop:value=current.to_string()
+                on:change=move |ev: ev::Event| {
+                    if let Some(t) = ev.target() {
+                        if let Ok(i) = t.unchecked_into::<HtmlInputElement>().value().parse::<usize>() {
+                            on_pick.run(i);
+                        }
+                    }
+                }>
+                {options.into_iter().map(|(i, name)| {
+                    view! { <option value=i.to_string()>{name}</option> }
+                }).collect_view()}
+            </select>
+        </div>
+    }
+}
+
 #[component]
 pub fn ChannelClipControls() -> impl IntoView {
     let store = use_store();
+    // Alpha is optional everywhere: when the active image has no alpha, the
+    // "A" view is meaningless (it's a constant 1.0), so disable it and bounce
+    // the selection back to RGB if it was on Alpha.
+    let has_alpha = Signal::derive(move || store.primary_image().map(|i| i.has_alpha).unwrap_or(false));
+    Effect::new(move |_| {
+        if !has_alpha.get() && store.channel.get() == Channel::Alpha {
+            store.channel.set(Channel::Rgb);
+        }
+    });
     view! {
         <section class="panel-inset p-2 space-y-2">
             <header class="label">"Channel"</header>
             <div class="grid grid-cols-5 gap-1">
                 {Channel::ALL.iter().copied().map(|c| {
                     let active = Signal::derive(move || store.channel.get() == c);
+                    let disabled = Signal::derive(move || c == Channel::Alpha && !has_alpha.get());
                     view! {
                         <button
                             class=move || if active.get() { "btn btn-pri" } else { "btn" }
-                            on:click=move |_| store.channel.set(c)>
+                            disabled=move || disabled.get()
+                            title=move || if disabled.get() { "No alpha channel in this image" } else { "" }
+                            on:click=move |_| if !disabled.get() { store.channel.set(c) }>
                             {c.label()}
                         </button>
                     }

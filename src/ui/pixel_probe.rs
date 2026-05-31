@@ -16,6 +16,7 @@ struct ProbeRead {
     display: [f32; 3],
     flags: Vec<String>,
     secondary: Option<[f32; 4]>,
+    has_alpha: bool,
 }
 
 #[component]
@@ -51,8 +52,11 @@ pub fn PixelProbe() -> impl IntoView {
         } else {
             display
         };
+        // Alpha is optional: skip it in flags/readout when the image has none.
+        let has_alpha = img.has_alpha;
+        let n_chan = if has_alpha { 4 } else { 3 };
         let mut flags = Vec::new();
-        for (n, v) in ["R", "G", "B", "A"].iter().zip(raw.iter()) {
+        for (n, v) in ["R", "G", "B", "A"].iter().zip(raw.iter()).take(n_chan) {
             if v.is_nan() {
                 flags.push(format!("NaN({n})"));
             } else if v.is_infinite() {
@@ -62,7 +66,7 @@ pub fn PixelProbe() -> impl IntoView {
             }
         }
         let secondary = store.secondary_image().and_then(|img2| img2.pixel(x as u32, y as u32));
-        Some(ProbeRead { x, y, raw, exposed, display, flags, secondary })
+        Some(ProbeRead { x, y, raw, exposed, display, flags, secondary, has_alpha })
     });
 
     view! {
@@ -111,6 +115,7 @@ fn ProbeTable(p: ProbeRead) -> impl IntoView {
         }
     }).collect();
     let alpha = p.raw[3];
+    let has_alpha = p.has_alpha;
 
     view! {
         <table class="text-[11px]">
@@ -132,12 +137,14 @@ fn ProbeTable(p: ProbeRead) -> impl IntoView {
             </thead>
             <tbody>
                 {rows}
-                <tr>
-                    <td class="pr-3">"A"</td>
-                    <td class="pr-3 text-right">{format_val(alpha)}</td>
-                    <td />
-                    <td />
-                </tr>
+                {has_alpha.then(|| view! {
+                    <tr>
+                        <td class="pr-3">"A"</td>
+                        <td class="pr-3 text-right">{format_val(alpha)}</td>
+                        <td />
+                        <td />
+                    </tr>
+                })}
             </tbody>
         </table>
     }
