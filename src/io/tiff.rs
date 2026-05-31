@@ -73,6 +73,7 @@ pub fn decode(bytes: &[u8], name: &str) -> Result<HdrImage, DecodeError> {
         is_hdr,
         source_bytes: bytes.len(),
         format_label: "TIFF",
+        multichannel: None,
     })
 }
 

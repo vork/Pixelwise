@@ -177,5 +177,6 @@ pub fn decode_via_image(
         is_hdr,
         source_bytes: bytes.len(),
         format_label,
+        multichannel: None,
     })
 }
