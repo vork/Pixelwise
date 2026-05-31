@@ -5,7 +5,7 @@ use leptos::prelude::*;
 use crate::state::store::use_store;
 use crate::state::view::ViewMode;
 use crate::ui::compare::CompareControls;
-use crate::ui::controls::{ChannelClipControls, InspectControls, LutPanel};
+use crate::ui::controls::{ChannelClipControls, ChannelMapPanel, InspectControls, LutPanel};
 use crate::ui::drop_zone::DropZone;
 use crate::ui::histogram::HistogramPanel;
 use crate::ui::metrics_panel::MetricsPanel;
@@ -19,11 +19,35 @@ pub fn AppShell() -> impl IntoView {
 
     let mode_label = Signal::derive(move || store.mode.get().label().to_string());
 
+    // Drawer state for the small-screen layout. On lg+ the panels are static
+    // columns (CSS handles that); these only drive the mobile slide-overs.
+    let left_open = RwSignal::new(false);
+    let right_open = RwSignal::new(false);
+
+    let left_class = move || {
+        let base = "panel drawer drawer-left flex flex-col min-h-0 overflow-hidden \
+                    lg:w-[260px] lg:flex-shrink-0 lg:translate-x-0";
+        if left_open.get() { format!("{base} translate-x-0") } else { format!("{base} -translate-x-full") }
+    };
+    let right_class = move || {
+        let base = "panel drawer drawer-right flex flex-col min-h-0 overflow-hidden scroll-thin \
+                    overflow-y-auto lg:w-[320px] lg:flex-shrink-0 lg:translate-x-0";
+        if right_open.get() { format!("{base} translate-x-0") } else { format!("{base} translate-x-full") }
+    };
+    let backdrop_open = move || left_open.get() || right_open.get();
+
     view! {
         <div class="h-screen w-screen flex flex-col text-text bg-bg overflow-hidden">
-            <TopBar />
-            <div class="flex-1 min-h-0 grid grid-cols-[260px_1fr_320px] gap-2 p-2">
-                <aside class="panel flex flex-col min-h-0 overflow-hidden">
+            <TopBar left_open=left_open right_open=right_open />
+            <div class="flex-1 min-h-0 flex gap-0 lg:gap-2 lg:p-2 relative">
+                // Backdrop behind open drawers (mobile only).
+                <div
+                    class="fixed left-0 right-0 top-12 bottom-7 z-30 bg-black/50 backdrop-blur-[1px] lg:hidden"
+                    class:hidden=move || !backdrop_open()
+                    on:click=move |_| { left_open.set(false); right_open.set(false); }
+                />
+
+                <aside class=left_class>
                     <div class="px-3 pt-2 pb-1 flex items-center justify-between">
                         <span class="label">"Images"</span>
                         <span class="text-[10px] text-muted nums">
@@ -36,7 +60,7 @@ pub fn AppShell() -> impl IntoView {
                     </div>
                 </aside>
 
-                <main class="panel relative flex flex-col min-h-0 overflow-hidden">
+                <main class="panel relative flex flex-col min-h-0 overflow-hidden flex-1 min-w-0">
                     <ModeBar />
                     <div class="relative flex-1 min-h-0">
                         <Viewport />
@@ -49,7 +73,7 @@ pub fn AppShell() -> impl IntoView {
                     </div>
                 </main>
 
-                <aside class="panel flex flex-col min-h-0 overflow-hidden scroll-thin overflow-y-auto">
+                <aside class=right_class>
                     {move || if store.primary_image().is_some() {
                         view! {
                             <div class="p-2 space-y-2">
@@ -61,6 +85,7 @@ pub fn AppShell() -> impl IntoView {
                                 } else {
                                     view! {
                                         <>
+                                            <ChannelMapPanel />
                                             <InspectControls />
                                             <LutPanel />
                                             <ChannelClipControls />
@@ -92,32 +117,46 @@ pub fn AppShell() -> impl IntoView {
 }
 
 #[component]
-fn TopBar() -> impl IntoView {
+fn TopBar(left_open: RwSignal<bool>, right_open: RwSignal<bool>) -> impl IntoView {
     let store = use_store();
     let hdr = move || store.hdr_active.get();
     let gpu = move || store.gpu_available.get();
 
     view! {
-        <header class="h-12 flex items-center justify-between px-3 border-b border-border bg-panel">
-            <div class="flex items-center gap-3">
-                <img src="icon-1024.png" class="w-7 h-7 rounded-md" alt="" />
-                <div class="flex items-baseline gap-2">
+        <header class="h-12 flex items-center justify-between px-2 sm:px-3 gap-2 border-b border-border bg-panel">
+            <div class="flex items-center gap-2 min-w-0">
+                // Mobile: toggle the Images drawer.
+                <button
+                    class="btn px-2 lg:hidden"
+                    title="Images"
+                    on:click=move |_| { right_open.set(false); left_open.update(|v| *v = !*v); }>
+                    "☰"
+                </button>
+                <img src="icon-1024.png" class="w-7 h-7 rounded-md shrink-0" alt="" />
+                <div class="flex items-baseline gap-2 min-w-0">
                     <span class="brand-text font-semibold text-[15px] tracking-tight">"Pixelwise"</span>
-                    <span class="text-muted text-xs">"HDR image inspection"</span>
+                    <span class="text-muted text-xs hidden md:inline">"HDR image inspection"</span>
                 </div>
             </div>
             <div class="flex items-center gap-2">
                 {move || match gpu() {
-                    Some(true) => view! { <span class="chip-ok">"WebGPU"</span> }.into_any(),
+                    Some(true) => view! { <span class="chip-ok hidden sm:inline-flex">"WebGPU"</span> }.into_any(),
                     Some(false) => view! { <span class="chip-err">"No WebGPU"</span> }.into_any(),
                     None => view! { <span class="chip">"Booting…"</span> }.into_any(),
                 }}
                 {move || if hdr() {
                     view! { <span class="chip-ok">"HDR · P3"</span> }.into_any()
                 } else {
-                    view! { <span class="chip">"SDR"</span> }.into_any()
+                    view! { <span class="chip hidden sm:inline-flex">"SDR"</span> }.into_any()
                 }}
-                <a class="btn" href="https://github.com/vork/Pixelwise" target="_blank" rel="noreferrer">"Repo"</a>
+                <a class="btn hidden lg:inline-flex" href="https://github.com/vork/Pixelwise" target="_blank" rel="noreferrer">"Repo"</a>
+                // Mobile: toggle the controls drawer.
+                <button
+                    class="btn px-2 lg:hidden"
+                    title="Controls"
+                    on:click=move |_| { left_open.set(false); right_open.update(|v| *v = !*v); }>
+                    "⚙"
+                </button>
             </div>
         </header>
     }
