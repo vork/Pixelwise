@@ -18,15 +18,16 @@ const BINDINGS: &[(&str, &str)] = &[
     ("↑ / ↓", "Zoom in / out"),
     ("1 2 4 8", "Zoom 1:1 … 8:1"),
     ("R", "Reset · fit to viewport"),
-    ("F", "Cycle view mode"),
+    ("← / →", "Image A: previous / next"),
+    ("⇧ ← / →", "Image B: previous / next"),
+    ("F", "Next view mode (⇧F back)"),
     ("E", "Toggle Difference mode"),
     ("M", "Cycle diff metric"),
     ("C", "Cycle channel view"),
     ("T", "Cycle tone map"),
     ("Space", "Flicker: swap A / B"),
     ("[ / ]", "Exposure −/+ 0.5 EV"),
-    ("{ / }", "Gamma −/+ 0.1"),
-    ("0", "Reset exposure & gamma"),
+    ("0", "Reset exposure"),
     ("H", "Toggle HDR / SDR preview"),
     ("?", "Toggle this help"),
 ];
@@ -107,12 +108,21 @@ fn handle_key(store: &Store, help_open: RwSignal<bool>, ev: &KeyboardEvent) -> b
     match ev.key().as_str() {
         "ArrowUp" => zoom(1.25),
         "ArrowDown" => zoom(0.8),
+        // Left/Right walk the image list: A by default, B with Shift.
+        "ArrowLeft" => {
+            if ev.shift_key() { store.step_secondary(-1) } else { store.step_primary(-1) }
+        }
+        "ArrowRight" => {
+            if ev.shift_key() { store.step_secondary(1) } else { store.step_primary(1) }
+        }
         "1" => preset(1.0),
         "2" => preset(2.0),
         "4" => preset(4.0),
         "8" => preset(8.0),
         "r" | "R" => store.fit_request.update(|n| *n += 1),
-        "f" | "F" => cycle_mode(store),
+        // lowercase = forward, Shift (uppercase) = backward.
+        "f" => cycle_mode(store, 1),
+        "F" => cycle_mode(store, -1),
         "e" | "E" => toggle_diff(store),
         "m" | "M" => cycle(&store.diff_mode, DiffMode::ALL),
         "c" | "C" => cycle_channel(store),
@@ -120,12 +130,9 @@ fn handle_key(store: &Store, help_open: RwSignal<bool>, ev: &KeyboardEvent) -> b
         " " => store.flicker_a.update(|v| *v = !*v),
         "]" => store.exposure.update(|v| *v = (*v + 0.5).clamp(-10.0, 10.0)),
         "[" => store.exposure.update(|v| *v = (*v - 0.5).clamp(-10.0, 10.0)),
-        "}" => store.tonemap_gamma.update(|v| *v = (*v + 0.1).clamp(1.0, 3.0)),
-        "{" => store.tonemap_gamma.update(|v| *v = (*v - 0.1).clamp(1.0, 3.0)),
-        "0" => {
-            store.exposure.set(0.0);
-            store.tonemap_gamma.set(2.2);
-        }
+        // Gamma is intentionally not bound: it only affects the Gamma tone-map
+        // mode, so a global key would be a silent no-op everywhere else.
+        "0" => store.exposure.set(0.0),
         "h" | "H" => {
             if store.hdr_active.get_untracked() {
                 store.hdr_enabled.update(|v| *v = !*v);
@@ -148,7 +155,7 @@ fn cycle<T: Copy + PartialEq + Send + Sync + 'static>(sig: &RwSignal<T>, all: &[
     sig.set(all[(idx + 1) % all.len()]);
 }
 
-fn cycle_mode(store: &Store) {
+fn cycle_mode(store: &Store, dir: i32) {
     let has_b = store.secondary_image().is_some();
     let modes: Vec<ViewMode> = ViewMode::ALL
         .iter()
@@ -156,8 +163,9 @@ fn cycle_mode(store: &Store) {
         .filter(|m| has_b || !m.needs_two_images())
         .collect();
     let cur = store.mode.get_untracked();
-    let idx = modes.iter().position(|m| *m == cur).unwrap_or(0);
-    store.mode.set(modes[(idx + 1) % modes.len()]);
+    let idx = modes.iter().position(|m| *m == cur).unwrap_or(0) as i32;
+    let next = (idx + dir).rem_euclid(modes.len() as i32) as usize;
+    store.mode.set(modes[next]);
 }
 
 fn toggle_diff(store: &Store) {

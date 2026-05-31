@@ -199,6 +199,37 @@ impl Store {
         }
     }
 
+    /// Keyboard image navigation: move the A (primary) slot to the prev/next
+    /// loaded image, wrapping. Keeps A != B by dropping B if it collides.
+    pub fn step_primary(&self, dir: i32) {
+        let n = self.images.with_untracked(|v| v.len());
+        if n == 0 {
+            return;
+        }
+        let cur = self.primary.get_untracked().unwrap_or(0) as i32;
+        let next = (cur + dir).rem_euclid(n as i32) as usize;
+        self.primary.set(Some(next));
+        if self.secondary.get_untracked() == Some(next) {
+            self.secondary.set(None);
+        }
+    }
+
+    /// Move the B (secondary) slot to the prev/next loaded image, skipping
+    /// whatever is in A. Needs at least two images to have a distinct B.
+    pub fn step_secondary(&self, dir: i32) {
+        let n = self.images.with_untracked(|v| v.len());
+        if n < 2 {
+            return;
+        }
+        let p = self.primary.get_untracked();
+        let start = self.secondary.get_untracked().unwrap_or(0) as i32;
+        let mut next = (start + dir).rem_euclid(n as i32) as usize;
+        if Some(next) == p {
+            next = ((next as i32) + dir).rem_euclid(n as i32) as usize;
+        }
+        self.secondary.set(Some(next));
+    }
+
     pub fn primary_image(&self) -> Option<Arc<HdrImage>> {
         let i = self.primary.get()?;
         self.images.with(|v| v.get(i).cloned())
