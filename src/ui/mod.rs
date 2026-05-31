@@ -6,5 +6,6 @@ pub mod metrics_panel;
 pub mod pixel_probe;
 pub mod sanity_panel;
 pub mod shell;
+pub mod shortcuts;
 pub mod theme;
 pub mod viewport;

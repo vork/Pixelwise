@@ -48,6 +48,8 @@ pub struct Store {
     pub gpu_available: RwSignal<Option<bool>>,
     /// Bumped whenever the renderer should re-issue mip/upload work.
     pub render_epoch: RwSignal<u64>,
+    /// Bumped to ask the viewport to fit the image to the canvas (keyboard "R").
+    pub fit_request: RwSignal<u64>,
 }
 
 impl Store {
@@ -83,6 +85,7 @@ impl Store {
             hdr_enabled: RwSignal::new(true),
             gpu_available: RwSignal::new(None),
             render_epoch: RwSignal::new(0),
+            fit_request: RwSignal::new(0),
         }
     }
 

@@ -11,6 +11,7 @@ use crate::ui::histogram::HistogramPanel;
 use crate::ui::metrics_panel::MetricsPanel;
 use crate::ui::pixel_probe::PixelProbe;
 use crate::ui::sanity_panel::SanityPanel;
+use crate::ui::shortcuts::KeyboardShortcuts;
 use crate::ui::viewport::Viewport;
 
 #[component]
@@ -112,6 +113,7 @@ pub fn AppShell() -> impl IntoView {
                 </aside>
             </div>
             <StatusBar mode_label=mode_label />
+            <KeyboardShortcuts />
         </div>
     }
 }

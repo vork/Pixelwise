@@ -249,6 +249,21 @@ pub fn Viewport() -> impl IntoView {
             zoom,
         });
     };
+    // Keyboard "R" (and anything else) can request a fit by bumping the
+    // store counter; perform it here where we have the canvas dimensions.
+    {
+        let prev = StoredValue::new(0_u64);
+        Effect::new(move |_| {
+            let n = store.fit_request.get();
+            if n != prev.get_value() {
+                prev.set_value(n);
+                if n > 0 {
+                    fit_to_view();
+                }
+            }
+        });
+    }
+
     let on_fit = move |_| fit_to_view();
     let on_one_to_one = move |_| {
         let dpr = web_sys::window().map(|w| w.device_pixel_ratio()).unwrap_or(1.0) as f32;
