@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0b0b0f" />
+
+    <!-- PWA / installability -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pixelwise" />
+
     <title>Pixelwise — HDR image inspection &amp; comparison</title>
     <meta name="description" content="A precision inspection and comparison tool for HDR images, render outputs, and ML-generated images. Runs entirely in your browser." />
 
@@ -14,9 +22,13 @@
     <meta property="og:image" content="icon-1024.png" />
 
     <link rel="icon" type="image/png" href="icon-1024.png" />
-    <link rel="apple-touch-icon" href="icon-1024.png" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
 
     <link data-trunk rel="copy-file" href="public/icon-1024.png" />
+    <link data-trunk rel="copy-file" href="public/icon-512.png" />
+    <link data-trunk rel="copy-file" href="public/icon-192.png" />
+    <link data-trunk rel="copy-file" href="public/manifest.webmanifest" />
+    <link data-trunk rel="copy-file" href="public/pwa-sw.js" />
     <link data-trunk rel="copy-file" href="public/coi-serviceworker.js" />
     <link data-trunk rel="css" href="style/tailwind.out.css" />
     <link data-trunk rel="rust" data-wasm-opt="z" />
@@ -29,6 +41,23 @@
         var s = document.createElement("script");
         s.src = "coi-serviceworker.js";
         document.head.appendChild(s);
+      })();
+
+      // PWA offline caching. Only register when the page is already
+      // cross-origin isolated by real server headers AND no service worker is
+      // controlling yet — i.e. the COI shim above is dormant. This keeps the
+      // two service workers from fighting over the same scope (which would
+      // otherwise cause a reload loop on hosts that rely on the COI shim).
+      (function () {
+        if (
+          window.crossOriginIsolated &&
+          "serviceWorker" in navigator &&
+          !navigator.serviceWorker.controller
+        ) {
+          window.addEventListener("load", function () {
+            navigator.serviceWorker.register("pwa-sw.js").catch(function () {});
+          });
+        }
       })();
 
       // wgpu 22 still requests `maxInterStageShaderComponents`, which Chrome
