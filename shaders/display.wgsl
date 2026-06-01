@@ -24,8 +24,11 @@ struct DisplayParams {
     false_color_min: f32,
     false_color_max: f32,
     lut_active: u32,
-    _pad1: f32,
-    _pad2: f32,
+    /// Linear-light offset added after exposure, before tonemap.
+    bias: f32,
+    /// When non-zero, remap each sample as `v * 0.5 + 0.5` before exposure
+    /// so [-1, 1] data shows up centered on gray instead of clipping.
+    normalize_signed: u32,
 };
 
 @group(0) @binding(0) var<uniform> params: DisplayParams;
@@ -75,8 +78,11 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let nan = any(c.rgb != c.rgb);
     let inf = is_inf(c.r) || is_inf(c.g) || is_inf(c.b);
     var lin = c.rgb;
+    if (params.normalize_signed != 0u) {
+        lin = lin * 0.5 + vec3<f32>(0.5);
+    }
     if (!nan && !inf) {
-        lin = lin * exp2(params.exposure);
+        lin = lin * exp2(params.exposure) + vec3<f32>(params.bias);
     }
     var pre_lut = apply_channel(vec4<f32>(lin, c.a), params.channel, t_ramp, s_ramp);
     if (params.output_is_hdr == 0u) {

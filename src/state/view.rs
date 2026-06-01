@@ -209,8 +209,17 @@ pub struct DisplayUniform {
     /// with ClampToEdge crushes the [0, 0.25] and [0.75, 1.0] ranges to 0/1.
     /// So we gate the actual LUT lookup result behind this flag.
     pub lut_active: u32,
-    pub _pad1: f32,
-    pub _pad2: f32,
+    /// Additive offset added to every channel *after* exposure, *before*
+    /// channel-isolation/tonemap. Useful to "lift" the image so very dark
+    /// data is visible, or to crush highlights when negative. Pure photo
+    /// "offset" — not gamma, not contrast.
+    pub bias: f32,
+    /// 1 when the user has enabled "normalize signed": each sample is
+    /// remapped `v = v * 0.5 + 0.5`, so data stored in `[-1, 1]` (e.g.
+    /// tangent-space normals, signed velocity AOVs) shows up centered on
+    /// gray instead of clipping the negative half to black. Applied
+    /// *before* exposure and bias.
+    pub normalize_signed: u32,
 }
 
 impl Default for DisplayUniform {
@@ -229,8 +238,8 @@ impl Default for DisplayUniform {
             false_color_min: 0.0,
             false_color_max: 1.0,
             lut_active: 0,
-            _pad1: 0.0,
-            _pad2: 0.0,
+            bias: 0.0,
+            normalize_signed: 0,
         }
     }
 }

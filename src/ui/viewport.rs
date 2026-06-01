@@ -71,6 +71,8 @@ pub fn Viewport() -> impl IntoView {
             let _ = store.tonemap.get();
             let _ = store.diff_mode.get();
             let _ = store.exposure.get();
+            let _ = store.bias.get();
+            let _ = store.normalize_signed.get();
             let _ = store.clip.get();
             let _ = store.camera.get();
             let _ = store.split_pos.get();

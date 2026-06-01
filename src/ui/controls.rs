@@ -21,6 +21,13 @@ pub fn InspectControls() -> impl IntoView {
             }
         }
     };
+    let on_bias = move |ev: ev::Event| {
+        if let Some(t) = ev.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) {
+            if let Ok(v) = t.value().parse::<f32>() {
+                store.bias.set(v);
+            }
+        }
+    };
 
     view! {
         <section class="panel-inset p-2 space-y-2">
@@ -40,6 +47,41 @@ pub fn InspectControls() -> impl IntoView {
                 <button class="btn" on:click=move |_| store.exposure.set(0.0)>"0 EV"</button>
                 <button class="btn" on:click=move |_| store.exposure.update(|v| *v -= 1.0)>"-1"</button>
                 <button class="btn" on:click=move |_| store.exposure.update(|v| *v += 1.0)>"+1"</button>
+            </div>
+
+            // Additive offset applied after exposure. Lets the user lift
+            // very dark HDR scenes into a visible range without losing the
+            // ratios exposure already set up.
+            <header class="flex items-center justify-between pt-1">
+                <span class="label">"Bias"</span>
+                <span class="text-xs nums">{move || format!("{:+.3}", store.bias.get())}</span>
+            </header>
+            <input
+                type="range" min="-1" max="1" step="0.005"
+                class="brand w-full"
+                title="Double-click to reset to 0"
+                prop:value=move || store.bias.get().to_string()
+                on:input=on_bias
+                on:dblclick=move |_| store.bias.set(0.0)
+            />
+            <div class="flex justify-between text-[10px] text-muted nums">
+                <button class="btn" on:click=move |_| store.bias.set(0.0)>"0"</button>
+                <button class="btn" on:click=move |_| store.bias.update(|v| *v -= 0.1)>"-0.1"</button>
+                <button class="btn" on:click=move |_| store.bias.update(|v| *v += 0.1)>"+0.1"</button>
+            </div>
+
+            // Map signed-range data ([-1, 1] normals, signed AOVs) into the
+            // unit interval before exposure/bias. Off by default — most
+            // image data is already non-negative.
+            <div class="flex items-center justify-between pt-1 gap-2">
+                <span class="label flex-1">"Normalize signed"</span>
+                <button
+                    class=move || if store.normalize_signed.get() { "btn btn-pri text-[10px]" }
+                                  else { "btn text-[10px]" }
+                    title="Remap each sample v ← v*0.5 + 0.5 (for [-1, 1] data like normal maps)"
+                    on:click=move |_| store.normalize_signed.update(|b| *b = !*b)>
+                    {move || if store.normalize_signed.get() { "on" } else { "off" }}
+                </button>
             </div>
 
             <header class="flex items-center justify-between pt-1">
@@ -435,13 +477,6 @@ pub fn ChannelMapPanel() -> impl IntoView {
                 .collect();
             let show_layers = layer_presets.len() > 1;
 
-            // Default channel to use when the user enables alpha: a real alpha
-            // channel if one exists, otherwise the last channel.
-            let alpha_default = channels
-                .iter()
-                .position(|c| matches!(c.leaf().to_ascii_lowercase().as_str(), "a" | "alpha"))
-                .unwrap_or(channels.len().saturating_sub(1));
-            let alpha_on = sel.a.is_some();
 
             Some(view! {
                 // Collapsible: multichannel inspection is opt-in, so it folds
@@ -482,25 +517,16 @@ pub fn ChannelMapPanel() -> impl IntoView {
                     <ChanRow tag="B" dot="#8aa9ff" options=options.clone() current=sel.b
                         on_pick=Callback::new(move |i| store.set_channel_selection(idx, ChannelSelection { b: i, ..sel })) />
 
-                    <div class="flex items-center gap-2 text-[11px] pt-0.5 border-t border-border mt-1">
-                        <button
-                            class=move || if alpha_on { "btn btn-pri text-[10px] w-12" } else { "btn text-[10px] w-12" }
-                            title="Alpha is optional — toggle whether an alpha channel is used"
-                            on:click=move |_| {
-                                let next = if alpha_on { None } else { Some(alpha_default) };
-                                store.set_channel_selection(idx, ChannelSelection { a: next, ..sel });
-                            }>
-                            "Alpha"
-                        </button>
-                        {if alpha_on {
-                            view! {
-                                <ChanRow tag="A" dot="#cfd0e8" options=options.clone() current=sel.a.unwrap_or(0)
-                                    on_pick=Callback::new(move |i| store.set_channel_selection(idx, ChannelSelection { a: Some(i), ..sel })) />
-                            }.into_any()
-                        } else {
-                            view! { <span class="text-muted text-[10px]">"none (opaque)"</span> }.into_any()
-                        }}
-                    </div>
+                    // Alpha is treated like R/G/B but with a "(none, opaque)"
+                    // sentinel at the top of the dropdown, so picking "no
+                    // alpha" is a normal menu choice instead of a separate
+                    // toggle button.
+                    <AlphaRow
+                        options=options.clone()
+                        current=sel.a
+                        on_pick=Callback::new(move |a: Option<usize>| {
+                            store.set_channel_selection(idx, ChannelSelection { a, ..sel });
+                        }) />
                   </div>
                 </details>
             })
@@ -535,6 +561,41 @@ fn ChanRow(
                 // every change, so a plain (non-reactive) flag is sufficient.
                 {options.into_iter().map(|(i, name)| {
                     view! { <option value=i.to_string() selected=i == current>{name}</option> }
+                }).collect_view()}
+            </select>
+        </div>
+    }
+}
+
+/// Alpha-row variant of [`ChanRow`]: same layout, but the dropdown has a
+/// sentinel "(none, opaque)" option that maps to `None`. Picking it sets
+/// the selection's `a` to `None` — the rest of the pipeline then treats
+/// every pixel as fully opaque.
+#[component]
+fn AlphaRow(
+    options: Vec<(usize, String)>,
+    current: Option<usize>,
+    on_pick: Callback<Option<usize>>,
+) -> impl IntoView {
+    // Reserve a sentinel string the parse can never produce: every real
+    // option carries the channel index as a base-10 integer.
+    const NONE_VAL: &str = "none";
+    view! {
+        <div class="flex items-center gap-2 text-[11px] flex-1 pt-0.5 border-t border-border mt-1">
+            <span class="w-3 text-center font-semibold" style="color:#cfd0e8">"A"</span>
+            <select
+                class="select flex-1"
+                on:change=move |ev: ev::Event| {
+                    if let Some(t) = ev.target() {
+                        let raw = t.unchecked_into::<HtmlInputElement>().value();
+                        let next = raw.parse::<usize>().ok();
+                        on_pick.run(next);
+                    }
+                }>
+                <option value=NONE_VAL selected=current.is_none()>"(none, opaque)"</option>
+                {options.into_iter().map(|(i, name)| {
+                    let is_current = current == Some(i);
+                    view! { <option value=i.to_string() selected=is_current>{name}</option> }
                 }).collect_view()}
             </select>
         </div>

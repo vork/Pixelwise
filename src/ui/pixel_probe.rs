@@ -26,8 +26,18 @@ pub fn PixelProbe() -> impl IntoView {
         let (x, y) = store.probe_px.get()?;
         let img = store.primary_image()?;
         let raw = img.pixel(x as u32, y as u32)?;
+        // Mirror the shader pipeline: normalize → × exposure → + bias.
+        let mut prepped = [raw[0], raw[1], raw[2]];
+        if store.normalize_signed.get() {
+            prepped = [prepped[0] * 0.5 + 0.5, prepped[1] * 0.5 + 0.5, prepped[2] * 0.5 + 0.5];
+        }
         let mul = 2f32.powf(store.exposure.get());
-        let exposed = [raw[0] * mul, raw[1] * mul, raw[2] * mul];
+        let bias = store.bias.get();
+        let exposed = [
+            prepped[0] * mul + bias,
+            prepped[1] * mul + bias,
+            prepped[2] * mul + bias,
+        ];
         let display = match store.tonemap.get() {
             Tonemap::Linear => tonemap::linear(exposed),
             Tonemap::Srgb => tonemap::srgb(exposed),

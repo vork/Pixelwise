@@ -19,6 +19,18 @@ pub struct Store {
     pub tonemap: RwSignal<Tonemap>,
     pub diff_mode: RwSignal<DiffMode>,
     pub exposure: RwSignal<f32>,
+    /// Additive offset applied after exposure. Lifts shadows when positive,
+    /// crushes them when negative — handy to see content in very dark HDR
+    /// data without losing the highlight relationships exposure already
+    /// scaled. Units are linear-light, so reasonable range is roughly
+    /// `[-1, 1]`.
+    pub bias: RwSignal<f32>,
+    /// Remap each sample `v → v * 0.5 + 0.5` before exposure/bias. Pushes
+    /// `[-1, 1]` data (tangent-space normals, signed AOVs, audio-style
+    /// waveforms) into the unit interval so the negative half doesn't
+    /// clip to black. Applies to every pixel uniformly — the channel
+    /// picker still controls which source channels feed R/G/B/A.
+    pub normalize_signed: RwSignal<bool>,
     pub clip: RwSignal<ClipFlags>,
     pub camera: RwSignal<Camera>,
     pub split_pos: RwSignal<f32>,
@@ -67,6 +79,8 @@ impl Store {
             tonemap: RwSignal::new(Tonemap::Srgb),
             diff_mode: RwSignal::new(DiffMode::Abs),
             exposure: RwSignal::new(0.0),
+            bias: RwSignal::new(0.0),
+            normalize_signed: RwSignal::new(false),
             clip: RwSignal::new(ClipFlags::empty()),
             camera: RwSignal::new(Camera::default()),
             split_pos: RwSignal::new(0.5),

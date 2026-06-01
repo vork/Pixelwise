@@ -301,7 +301,7 @@ fn compute_display_uniform(
         false_color_min: 0.0,
         false_color_max: 1.0,
         lut_active: store.lut.get_untracked().is_some() as u32,
-        _pad1: 0.0,
-        _pad2: 0.0,
+        bias: store.bias.get_untracked(),
+        normalize_signed: store.normalize_signed.get_untracked() as u32,
     }
 }

@@ -17,8 +17,10 @@ struct DisplayParams {
     false_color_min: f32,
     false_color_max: f32,
     lut_active: u32,
-    _pad1: f32,
-    _pad2: f32,
+    /// Linear-light offset added after exposure, before tonemap.
+    bias: f32,
+    /// When non-zero, remap each sample as `v * 0.5 + 0.5` before exposure.
+    normalize_signed: u32,
 };
 
 struct CompareParams {
@@ -71,8 +73,11 @@ fn prepare_pre_lut(c: vec4<f32>) -> vec3<f32> {
     let nan = any(c.rgb != c.rgb);
     let inf = is_inf(c.r) || is_inf(c.g) || is_inf(c.b);
     var lin = c.rgb;
+    if (params.normalize_signed != 0u) {
+        lin = lin * 0.5 + vec3<f32>(0.5);
+    }
     if (!nan && !inf) {
-        lin = lin * exp2(params.exposure);
+        lin = lin * exp2(params.exposure) + vec3<f32>(params.bias);
     }
     var rgb = apply_channel(vec4<f32>(lin, c.a), params.channel, t_ramp, s_ramp);
     if (params.output_is_hdr == 0u) {
@@ -82,7 +87,13 @@ fn prepare_pre_lut(c: vec4<f32>) -> vec3<f32> {
 }
 
 fn finish(c: vec4<f32>, in_uv_px: vec2<f32>, lut_out: vec3<f32>, pre_lut: vec3<f32>) -> vec3<f32> {
-    let lin = c.rgb * exp2(params.exposure);
+    // Match prepare_pre_lut so clipping flags reflect the post-bias linear
+    // value the user actually sees: normalize → exposure → bias.
+    var lin_in = c.rgb;
+    if (params.normalize_signed != 0u) {
+        lin_in = lin_in * 0.5 + vec3<f32>(0.5);
+    }
+    let lin = lin_in * exp2(params.exposure) + vec3<f32>(params.bias);
     var rgb = pre_lut;
     // Same gating as display.wgsl: only consume lut_out when a real LUT is
     // loaded — the identity 2×2×2 placeholder would otherwise crush the
