@@ -20,6 +20,20 @@ pub fn AppShell() -> impl IntoView {
 
     let mode_label = Signal::derive(move || store.mode.get().label().to_string());
 
+    // The right-panel conditionals below need to fire only when the *boolean*
+    // they depend on changes — not every time `images` or `primary` mutates.
+    // Without Memo, a channel-mapping update or any image swap would tear down
+    // and remount the entire ChannelMap/InspectControls/SanityPanel subtree,
+    // which disposes their internal Effects mid-frame and panics the next time
+    // those Effects fire. The disposed-Effect panic crashes the wgpu render
+    // pass mid-recording, freezing the canvas on whatever was last drawn.
+    let has_primary = Memo::new(move |_| store.primary_image().is_some());
+    let mode_is_diff = Memo::new(move |_| matches!(store.mode.get(), ViewMode::Difference));
+    let mode_needs_two = Memo::new(move |_| store.mode.get().needs_two_images());
+    let mode_shows_metrics = Memo::new(move |_| {
+        matches!(store.mode.get(), ViewMode::Metrics | ViewMode::Difference)
+    });
+
     // Drawer state for the small-screen layout. On lg+ the panels are static
     // columns (CSS handles that); these only drive the mobile slide-overs.
     let left_open = RwSignal::new(false);
@@ -75,13 +89,13 @@ pub fn AppShell() -> impl IntoView {
                 </main>
 
                 <aside class=right_class>
-                    {move || if store.primary_image().is_some() {
+                    {move || if has_primary.get() {
                         view! {
                             <div class="p-2 space-y-2">
                                 // Exposure / tonemap / channel / clipping only apply to the
                                 // per-image display path; Difference mode renders a diff
                                 // heatmap that ignores them, so hide them there.
-                                {move || if matches!(store.mode.get(), ViewMode::Difference) {
+                                {move || if mode_is_diff.get() {
                                     view! { <div /> }.into_any()
                                 } else {
                                     view! {
@@ -93,13 +107,13 @@ pub fn AppShell() -> impl IntoView {
                                         </>
                                     }.into_any()
                                 }}
-                                {move || if store.mode.get().needs_two_images() {
+                                {move || if mode_needs_two.get() {
                                     view! { <CompareControls /> }.into_any()
                                 } else {
                                     view! { <div /> }.into_any()
                                 }}
                                 <HistogramPanel />
-                                {move || if matches!(store.mode.get(), ViewMode::Metrics | ViewMode::Difference) {
+                                {move || if mode_shows_metrics.get() {
                                     view! { <MetricsPanel /> }.into_any()
                                 } else {
                                     view! { <div /> }.into_any()
